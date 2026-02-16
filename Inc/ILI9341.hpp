@@ -4,15 +4,16 @@
 #ifndef __ILI9341_LIB_H__
 #define __ILI9341_LIB_H__
 
-/*
-This library is for ILI9341 TFT LCD Display builtin STM32F429I-DISC1.
-If you use this library for other board.
-You need to check schematic.
-
-STM32F429I-DISC1 can not read data from builtin ILI9341.
-Because MISO pin is not connected to ILI9341.
-
-*/
+/**
+ * @file ILI9341.hpp
+ * @brief ILI9341 TFT LCD driver for STM32F429I-DISC1.
+ *
+ * @details
+ * This driver targets the onboard ILI9341 display wiring used by
+ * STM32F429I-DISC1. For other boards, verify schematic and pin mapping.
+ *
+ * On STM32F429I-DISC1, MISO is not connected to the onboard panel.
+ */
 
 #include "main.h"
 
@@ -25,23 +26,42 @@ Because MISO pin is not connected to ILI9341.
 #define USE_FREERTOS
 
 namespace TFT_LCD {
+    /**
+     * @brief Hardware resources required by the ILI9341 driver.
+     */
     struct ILI9341_Config {
+        /** @brief SPI handle connected to the panel command/data interface. */
         SPI_HandleTypeDef* const hspi = nullptr;
 
+        /** @brief GPIO definitions for control pins used by the panel. */
         struct {
+            /** @brief GPIO port of the control signal. */
             GPIO_TypeDef* const Port = nullptr;
+            /** @brief GPIO pin number of the control signal. */
             uint16_t Pin = 0;
         } CS,WR,RD;
 
+        /** @brief LTDC handle used to present frame buffer content. */
         LTDC_HandleTypeDef* const hltdc = nullptr;
 
+        /** @brief Optional DMA2D handle used for frame copy acceleration. */
         DMA2D_HandleTypeDef* const hdma2d = nullptr;
     };
 
+    /**
+     * @brief ILI9341 display controller wrapper.
+     *
+     * @details
+     * Provides panel initialization, primitive drawing, text rendering, and
+     * optional double-buffered frame updates through LTDC.
+     */
     class ILI9341{
     public:
+        /** @brief Physical LCD width in pixels. */
         static const uint32_t LCD_WIDTH {240};
+        /** @brief Physical LCD height in pixels. */
         static const uint32_t LCD_HEIGHT {320};
+        /** @brief Number of bytes per RGB565 pixel. */
         static const uint32_t PIXEL_BYTE_COUNT {2};
     private:
         /** 
@@ -137,35 +157,104 @@ namespace TFT_LCD {
             PRC             = 0xF7,   /* Pump ratio control register */
         };
 
+        /** @brief Number of internal frame-buffer slots used by the driver. */
         static const uint32_t FRAME_BUFFER_COUNT = 2;
 
+        /** @brief Internal frame-buffer descriptors (front/back). */
         FrameBuffer _FrameBuffer[FRAME_BUFFER_COUNT];
 
+        /** @brief Index of currently displayed frame buffer. */
         uint32_t _selectedFrameBuffer = 0;
 
+        /** @brief Indicates whether a back buffer is configured. */
         bool _hasBackFrame = false;
+        /** @brief Prevents duplicate update on already swapped frame. */
         bool _isUpdatedRecently = false;
     private:
+        /** @brief Immutable driver configuration set at construction. */
         const ILI9341_Config config;
     private:
+        /**
+         * @brief Write one command byte to the panel.
+         * @param command ILI9341 command code.
+         */
         void writeCommand(const uint8_t command);
+        /**
+         * @brief Write one data byte to the panel.
+         * @param data Command parameter byte.
+         */
         void writeData(const uint8_t data);
 
+        /**
+         * @brief Write a command followed by a parameter array.
+         * @param address Register/command address.
+         * @param data Parameter payload to write.
+         */
         void writeRegister(const uint8_t address,std::span<const uint8_t> data);
 
+        /**
+         * @brief Configure LTDC layer from a frame buffer.
+         * @param layerIndex LTDC layer index.
+         * @param frameBuffer Source frame buffer.
+         * @param left Left pixel position of the layer window.
+         * @param top Top pixel position of the layer window.
+         */
         void setLayer(uint32_t layerIndex,const FrameBuffer& frameBuffer, uint32_t left = 0,uint32_t top = 0);
     public:
+        /**
+         * @brief Construct ILI9341 driver instance.
+         * @param config Hardware resource configuration.
+         */
         ILI9341(ILI9341_Config config);
 
+        /**
+         * @brief Initialize panel registers and attach the front frame buffer.
+         * @param FrameBufferAddress RGB565 frame buffer base address.
+         */
         void initalize(uint16_t* FrameBufferAddress);
 
+        /**
+         * @brief Register a back frame buffer for double buffering.
+         * @param FrameBufferAddress RGB565 back-frame buffer base address.
+         */
         void setBackFrameBuffer(uint16_t* FrameBufferAddress);
 
+        /**
+         * @brief Draw a filled rectangle.
+         * @param x Left pixel coordinate.
+         * @param y Top pixel coordinate.
+         * @param width Rectangle width in pixels.
+         * @param height Rectangle height in pixels.
+         * @param color Fill color in RGB565.
+         * @param update Swap/present immediately when back buffer is enabled.
+         */
         void drawRectangle(uint32_t x, uint32_t y, uint32_t width, uint32_t height, Pixel color,bool update = true);
 
+        /**
+         * @brief Draw a text string.
+         * @param text Text to render.
+         * @param x Left pixel coordinate.
+         * @param y Top pixel coordinate.
+         * @param font Font resource descriptor.
+         * @param color Text color in RGB565.
+         * @param update Swap/present immediately when back buffer is enabled.
+         */
         void putText(std::string text, uint32_t x,uint32_t y,const sFONT& font,Pixel color,bool update = true);
+        /**
+         * @brief Draw a single character.
+         * @param character ASCII character code.
+         * @param x Left pixel coordinate.
+         * @param y Top pixel coordinate.
+         * @param font Font resource descriptor.
+         * @param color Glyph color in RGB565.
+         * @param update Swap/present immediately when back buffer is enabled.
+         */
         void putChar(uint8_t character,uint32_t x,uint32_t y,const sFONT& font,Pixel color,bool update = true);
 
+        /**
+         * @brief Present back buffer and synchronize frame contents.
+         * @return `true` when frame was swapped, otherwise `false`.
+         */
         bool updateFrame();
     };
 }
